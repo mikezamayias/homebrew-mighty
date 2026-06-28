@@ -1,10 +1,10 @@
 cask "mighty" do
-  version "2026.6.1"
-  sha256 "ee8a26fc8caeb5ab18353a5dacae8d8d4039592d3db5e5ba1f644c0282773fd8"
+  version "2026.6.2"
+  sha256 "c030ef679d7813e47a6ec3b0ce5faf5fc9b2ab9f6b3e4b1cc60316c9806fae62"
 
   url "https://mighty.mikezamayias.com/downloads/mighty-#{version}.dmg"
   name "Mighty"
-  desc "Mightier than G HUB. — battery, DPI, polling rate, button remapping for your Logitech mouse"
+  desc "Battery status, DPI, polling rate, and button remapping for supported Logitech mice"
   homepage "https://mighty.mikezamayias.com"
 
   livecheck do
