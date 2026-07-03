@@ -1,6 +1,6 @@
 cask "mighty" do
-  version "2026.6.5"
-  sha256 "36d886f6e5c4cd7b9cecf9fc6541fcf36de0712de90bf48edc5f27fb16ade4de"
+  version "2026.6.6"
+  sha256 "78f56003f6c955ef9dcfa65dd704777bfd04efbf9a670f8824ceca2d96206ffa"
 
   url "https://mighty.mikezamayias.com/downloads/mighty-#{version}.dmg"
   name "Mighty"
@@ -21,7 +21,6 @@ cask "mighty" do
   zap trash: [
     "~/Library/Application Support/Mighty",
     "~/Library/Caches/com.mikezamayias.mighty",
-    "~/Library/Preferences/com.mikezamayias.mighty.Sparkle.plist",
     "~/Library/Preferences/com.mikezamayias.mighty.plist",
   ]
 end
