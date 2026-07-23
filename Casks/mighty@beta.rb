@@ -1,4 +1,4 @@
-cask "mighty-beta" do
+cask "mighty@beta" do
   version "2026.7.12"
   sha256 "45389adac52145e6b3149ed16acdcee1dfae4d88c7d00238dd1b83d8ef078751"
 
@@ -20,7 +20,7 @@ cask "mighty-beta" do
     stable, but the DMG comes from /downloads/candidates/ and may be less
     polished than the latest stable cask (`mighty`).
 
-    Do not install both `mighty` and `mighty-beta` at the same time — they
+    Do not install both `mighty` and `mighty@beta` at the same time — they
     share the Mighty.app install path.
   EOS
 
