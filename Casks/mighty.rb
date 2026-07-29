@@ -1,6 +1,6 @@
 cask "mighty" do
-  version "2026.7.15"
-  sha256 "bb9ac41c44f64a64d368070d5542eb12f1d6025492853487bb293283ef7a2ee7"
+  version "2026.7.16"
+  sha256 "655983d41330d831756d93795d11423a69671be9747c1579c629d9dd3b82b018"
 
   url "https://mighty.mikezamayias.com/downloads/mighty-#{version}.dmg"
   name "Mighty"
