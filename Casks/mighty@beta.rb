@@ -1,8 +1,8 @@
 cask "mighty@beta" do
-  version "2026.8.1"
-  sha256 "4084ac12a21478e615f8999030f1109443ca71bec51aa29879db8a71e2c2565b"
+  version "2026.8.1,401"
+  sha256 "67750a994ff1faa1b9ff936687b7d982eccf19d3265e85d2e85e1afee749577c"
 
-  url "https://mighty.mikezamayias.com/downloads/candidates/mighty-#{version}.dmg"
+  url "https://mighty.mikezamayias.com/downloads/candidates/mighty-#{version.before_comma}-#{version.after_comma}.dmg"
   name "Mighty"
   desc "Beta builds of Mighty (battery, DPI, polling, button remap for Logitech mice)"
   homepage "https://mighty.mikezamayias.com"
