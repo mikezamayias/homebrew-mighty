@@ -54,8 +54,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r cask; do
-            test -n "$cask"
+          while IFS= read -r cask || [[ -n "$cask" ]]; do
+            [[ -z "$cask" ]] && continue
             [[ "$cask" =~ ^Casks/[A-Za-z0-9@._+-]+\.rb$ ]]
             git ls-files --error-unmatch -- "$cask" >/dev/null
             ruby -c "$cask"

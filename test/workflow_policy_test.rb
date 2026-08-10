@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 require "English"
+require "fileutils"
 require "minitest/autorun"
+require "open3"
+require "tmpdir"
 require "yaml"
 
 class ManualWorkflowPolicy
@@ -292,5 +295,51 @@ class ManualWorkflowPolicyTest < Minitest::Test
     assert $CHILD_STATUS.success?, "could not list tracked casks"
     assert_equal tracked, manifest
     assert manifest.all? { |path| path.match?(%r{\ACasks/[A-Za-z0-9@._+-]+\.rb\z}) }
+  end
+
+  def test_manifest_loop_skips_blank_lines_and_processes_final_line_without_newline
+    manifest = "Casks/first.rb\n\nCasks/second@beta.rb"
+
+    with_stubbed_validation_commands(manifest) do |command_log|
+      commands = File.readlines(command_log, chomp: true)
+
+      assert_equal 8, commands.length
+      assert_equal 4, commands.count { |command| command.include?("Casks/first.rb") }
+      assert_equal 4, commands.count { |command| command.include?("Casks/second@beta.rb") }
+      refute commands.any? { |command| command.end_with?("\t") }
+    end
+  end
+
+  private
+
+  def with_stubbed_validation_commands(manifest)
+    Dir.mktmpdir do |directory|
+      bin = File.join(directory, "bin")
+      command_log = File.join(directory, "commands.log")
+      FileUtils.mkdir_p([bin, File.join(directory, ".github")])
+      File.binwrite(File.join(directory, ".github/cask-validation-manifest.txt"), manifest)
+      %w[brew git ruby].each { |name| write_command_stub(bin, name) }
+
+      workflow = YAML.safe_load_file(ManualWorkflowPolicy::WORKFLOW, aliases: false)
+      validation = workflow.fetch("jobs").fetch("validate-casks").fetch("steps")
+        .find { |step| step["name"] == "Validate every manifest cask" }
+        .fetch("run")
+      environment = { "COMMAND_LOG" => command_log, "PATH" => "#{bin}:#{ENV.fetch('PATH')}" }
+      _output, error, status = Open3.capture3(environment, "bash", "-c", validation, chdir: directory)
+
+      assert status.success?, error
+      yield command_log
+    end
+  end
+
+  def write_command_stub(bin, name)
+    path = File.join(bin, name)
+    File.write(path, <<~BASH)
+      #!/bin/bash
+      printf '%s' "$(basename "$0")" >> "$COMMAND_LOG"
+      printf '\\t%s' "$@" >> "$COMMAND_LOG"
+      printf '\\n' >> "$COMMAND_LOG"
+    BASH
+    FileUtils.chmod(0o755, path)
   end
 end
