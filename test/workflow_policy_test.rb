@@ -6,13 +6,16 @@ require "yaml"
 
 class ManualWorkflowPolicy
   WORKFLOW = File.expand_path("../.github/workflows/manual-cask-validation.yml", __dir__)
+  WORKFLOW_DIR = File.expand_path("../.github/workflows", __dir__)
+  WORKFLOW_FILENAME = "manual-cask-validation.yml"
   EXPECTED_RUNNER = %w[self-hosted macOS ARM64 homebrew-mighty-manual].freeze
   CHECKOUT_SHA = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
   FORBIDDEN_TRIGGERS = %w[
     pull_request pull_request_target push schedule repository_dispatch workflow_call
   ].freeze
   FORBIDDEN_COMMANDS = [
-    /\bbrew\s+(?:bump|create|edit|install|reinstall|tap|uninstall|untap|upgrade)\b/i,
+    /\bbrew\s+(?:bump|cleanup|create|edit|install|link|reinstall|tap|tap-new|uninstall|unlink|untap|update|upgrade)\b/i,
+    /\b(?:gem|bundle)\s+install\b/i,
     /\bgit\s+(?:commit|push|tag)\b/i,
     /\bgh\s+(?:pr\s+create|release|workflow\s+run)\b/i,
     /\b(?:curl|wget)\b[^\n]*(?:--request|-X)\s*(?:DELETE|PATCH|POST|PUT)\b/i,
@@ -56,11 +59,7 @@ class ManualWorkflowPolicy
   end
 
   def validate_permissions
-    each_pair(@document) do |key, value|
-      next unless key.to_s == "permissions"
-
-      errors << "permissions must be exactly contents: read" unless value == { "contents" => "read" }
-    end
+    errors << "workflow must declare top-level contents: read permissions" unless @document["permissions"] == { "contents" => "read" }
   end
 
   def validate_jobs
@@ -150,6 +149,14 @@ end
 class ManualWorkflowPolicyTest < Minitest::Test
   def test_manual_workflow_obeys_security_policy
     assert_empty ManualWorkflowPolicy.new.validate
+  end
+
+  def test_workflow_directory_contains_only_manual_validation
+    workflow_files = Dir.glob(File.join(ManualWorkflowPolicy::WORKFLOW_DIR, "*.{yml,yaml}"))
+      .map { |path| File.basename(path) }
+      .sort
+
+    assert_equal [ManualWorkflowPolicy::WORKFLOW_FILENAME], workflow_files
   end
 
   def test_manifest_is_explicit_and_covers_every_tracked_cask
