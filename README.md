@@ -25,8 +25,8 @@ The manual workflow validates only code that has already landed on the protected
 Only the Captain may start a validation run, and only after the repository changes to validate have landed on `main`.
 The separately registered repository-scoped runner must have the labels `self-hosted`, `macOS`, `ARM64`, and `homebrew-mighty-manual`.
 Default-branch protection and runner registration are account operations maintained separately from this repository.
-The latest read-only `gh-axi` inspection found the repository-scoped runner registered but offline, while default-branch protection remains a pending account action.
-The Captain must protect `main` and bring the registered runner online before dispatch; this repository does not register or start runners or mutate account settings.
+The registered-offline runner operating model and protected `main` prerequisite must be confirmed through read-only account inspection before dispatch.
+The Captain must complete any pending account follow-up and bring the registered runner online before dispatch; this repository does not register or start runners or mutate account settings.
 
 The Captain's dispatch procedure is:
 
@@ -41,7 +41,8 @@ Homebrew commands may create unavoidable local command caches on the attended ru
 Mighty remains the sole owner of cask publishing and mirror mutations.
 
 The immutable Nix Homebrew boundary applies to local validation as well.
-Local `brew style` and `brew audit --cask --strict` attempts were blocked because the Nix-store Homebrew vendor bundle is read-only, and the non-mutating `HOMEBREW_TESTS` workaround lacks `rubocop` and `rubocop-ast`.
 Do not install vendor gems globally or mutate Homebrew to work around this limitation.
+When the Nix-store Homebrew vendor bundle is read-only, local `brew style` and `brew audit --cask --strict` cannot complete because the non-mutating `HOMEBREW_TESTS` workaround lacks `rubocop` and `rubocop-ast`.
+Record that limitation in the PR report.
 
 There is no Codemagic workflow or executable Codemagic integration in this repository.

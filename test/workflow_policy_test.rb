@@ -13,6 +13,7 @@ class ManualWorkflowPolicy
   FORBIDDEN_TRIGGERS = %w[
     pull_request pull_request_target push schedule repository_dispatch workflow_call
   ].freeze
+  READ_ONLY_PERMISSION_VALUES = %w[none read].freeze
   FORBIDDEN_COMMANDS = [
     /\bbrew\s+(?:bump|cleanup|create|edit|install|link|reinstall|tap|tap-new|uninstall|unlink|untap|update|upgrade)\b/i,
     /\b(?:gem|bundle)\s+install\b/i,
@@ -26,8 +27,8 @@ class ManualWorkflowPolicy
 
   attr_reader :errors
 
-  def initialize(path = WORKFLOW)
-    @document = YAML.safe_load_file(path, aliases: false)
+  def initialize(path = WORKFLOW, document: nil)
+    @document = document || YAML.safe_load_file(path, aliases: false)
     @errors = []
   end
 
@@ -60,6 +61,13 @@ class ManualWorkflowPolicy
 
   def validate_permissions
     errors << "workflow must declare top-level contents: read permissions" unless @document["permissions"] == { "contents" => "read" }
+    each_pair(@document) do |key, value|
+      next unless key.to_s == "permissions"
+
+      valid = value.is_a?(Hash) && value.values.all? { |permission| READ_ONLY_PERMISSION_VALUES.include?(permission) }
+      valid ||= value == "read-all"
+      errors << "permissions must be read-only" unless valid
+    end
   end
 
   def validate_jobs
@@ -149,6 +157,26 @@ end
 class ManualWorkflowPolicyTest < Minitest::Test
   def test_manual_workflow_obeys_security_policy
     assert_empty ManualWorkflowPolicy.new.validate
+  end
+
+  def test_job_permissions_cannot_grant_write
+    policy = ManualWorkflowPolicy.new(
+      document: { "permissions" => { "contents" => "read" }, "jobs" => { "validate" => { "permissions" => { "contents" => "write" } } } },
+    )
+
+    policy.validate
+
+    assert_includes policy.errors, "permissions must be read-only"
+  end
+
+  def test_job_write_all_permissions_cannot_grant_write
+    policy = ManualWorkflowPolicy.new(
+      document: { "permissions" => { "contents" => "read" }, "jobs" => { "validate" => { "permissions" => "write-all" } } },
+    )
+
+    policy.validate
+
+    assert_includes policy.errors, "permissions must be read-only"
   end
 
   def test_workflow_directory_contains_only_manual_validation
