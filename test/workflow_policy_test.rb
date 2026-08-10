@@ -23,11 +23,14 @@ class ManualWorkflowPolicy
   READ_ONLY_PERMISSION_VALUES = %w[none read].freeze
   SECRET_KEY_PATTERN = /secret/i
   SECRET_CONTEXT_PATTERN = /\bsecrets?\b/i
+  SAFE_GIT_COMMANDS = [
+    /\bgit\s+rev-parse\s+HEAD(?=$|[\r\n\)\]\}"'`;|&])/,
+    /\bgit\s+branch\s+--show-current(?=$|[\r\n\)\]\}"'`;|&])/,
+    /\bgit\s+ls-files\s+--error-unmatch\s+--(?=\s|$)/,
+  ].freeze
   FORBIDDEN_COMMANDS = [
     /\bbrew\s+(?:bump|cleanup|create|edit|install|link|reinstall|tap|tap-new|uninstall|unlink|untap|update|upgrade)\b/i,
     /\b(?:gem|bundle)\s+install\b/i,
-    /\bgit\s+(?:am|checkout|cherry-pick|commit|merge|push|rebase|reset|restore|revert|switch|symbolic-ref|tag|update-ref)\b/i,
-    /\bgit\s+branch\s+(?!--show-current\b)/i,
     /\bgh\s+(?:pr\s+create|release|workflow\s+run)\b/i,
     /\bgh\s+api\b[^\n]*(?:(?:--method(?:=|\s+)|-X(?:=|\s*)))(?:POST|PUT|PATCH|DELETE)\b/i,
     /\b(?:gem\s+push|npm\s+publish|yarn\s+publish|pnpm\s+publish)\b/i,
@@ -109,6 +112,7 @@ class ManualWorkflowPolicy
       end
 
       command = step["run"].to_s
+      validate_git_commands(command)
       FORBIDDEN_COMMANDS.each do |pattern|
         errors << "forbidden mutating command matches #{pattern.inspect}" if command.match?(pattern)
       end
@@ -126,6 +130,12 @@ class ManualWorkflowPolicy
     guard = guard_index ? steps[guard_index]["run"].to_s : ""
     errors << "guard must require protected main" unless guard.include?("refs/heads/main") && guard.include?("EVENT_REF_PROTECTED")
     errors << "guard must validate the event SHA" unless guard.include?("EVENT_SHA") && guard.include?("[0-9a-f]{40}")
+  end
+
+  def validate_git_commands(command)
+    remaining = command.dup
+    SAFE_GIT_COMMANDS.each { |pattern| remaining.gsub!(pattern, "") }
+    errors << "git command must be in the read-only allowlist" if remaining.match?(/\bgit\b/i)
   end
 
   def validate_checkout(options)
@@ -257,18 +267,16 @@ class ManualWorkflowPolicyTest < Minitest::Test
     assert_equal 4, policy.errors.count { |error| error.start_with?("forbidden mutating command") }
   end
 
-  def test_ref_changing_git_commands_are_rejected
+  def test_only_required_read_only_git_commands_are_allowed
     policy = ManualWorkflowPolicy.new(
       document: {
         "permissions" => { "contents" => "read" },
         "jobs" => {
           "validate" => {
             "steps" => [
-              { "run" => "git checkout main" },
-              { "run" => "git switch main" },
-              { "run" => "git reset --hard" },
-              { "run" => "git restore ." },
-              { "run" => "git update-ref refs/heads/main HEAD" },
+              { "run" => 'test "$(git rev-parse HEAD)" = "$EVENT_SHA"' },
+              { "run" => 'test "$(git branch --show-current)" = ""' },
+              { "run" => 'git ls-files --error-unmatch -- "$cask"' },
             ],
           },
         },
@@ -277,7 +285,29 @@ class ManualWorkflowPolicyTest < Minitest::Test
 
     policy.validate
 
-    assert_equal 5, policy.errors.count { |error| error.start_with?("forbidden mutating command") }
+    refute_includes policy.errors, "git command must be in the read-only allowlist"
+  end
+
+  def test_git_global_options_and_other_commands_are_rejected
+    policy = ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => {
+          "validate" => {
+            "steps" => [
+              { "run" => 'git -C "$GITHUB_WORKSPACE" checkout main' },
+              { "run" => 'git --git-dir="$GITHUB_WORKSPACE/.git" reset --hard' },
+              { "run" => "git status --short" },
+              { "run" => "git switch main" },
+            ],
+          },
+        },
+      },
+    )
+
+    policy.validate
+
+    assert_equal 4, policy.errors.count { |error| error == "git command must be in the read-only allowlist" }
   end
 
   def test_workflow_directory_contains_only_manual_validation
