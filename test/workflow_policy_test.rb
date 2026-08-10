@@ -10,6 +10,13 @@ class ManualWorkflowPolicy
   WORKFLOW_FILENAME = "manual-cask-validation.yml"
   EXPECTED_RUNNER = %w[self-hosted macOS ARM64 homebrew-mighty-manual].freeze
   CHECKOUT_SHA = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+  EXPECTED_JOB_CONDITION = [
+    "github.event_name == 'workflow_dispatch'",
+    "github.ref == 'refs/heads/main'",
+    "github.ref_protected == true",
+    "github.repository == 'mikezamayias/homebrew-mighty'",
+    "github.sha != ''",
+  ].join("&&").gsub(/\s+/, "").freeze
   FORBIDDEN_TRIGGERS = %w[
     pull_request pull_request_target push schedule repository_dispatch workflow_call
   ].freeze
@@ -21,6 +28,8 @@ class ManualWorkflowPolicy
     /\b(?:gem|bundle)\s+install\b/i,
     /\bgit\s+(?:commit|push|tag)\b/i,
     /\bgh\s+(?:pr\s+create|release|workflow\s+run)\b/i,
+    /\bgh\s+api\b[^\n]*(?:(?:--method(?:=|\s+)|-X(?:=|\s*)))(?:POST|PUT|PATCH|DELETE)\b/i,
+    /\b(?:gem\s+push|npm\s+publish|yarn\s+publish|pnpm\s+publish)\b/i,
     /\b(?:curl|wget)\b[^\n]*(?:--request|-X)\s*(?:DELETE|PATCH|POST|PUT)\b/i,
     /\b(?:sed\s+-i|perl\s+-pi|ruby\s+-pi)\b/i,
     /(?:>|>>)\s*Casks\//,
@@ -79,15 +88,8 @@ class ManualWorkflowPolicy
     jobs.each_value do |job|
       errors << "job must not reference a GitHub environment" if job.key?("environment")
       errors << "job must use only the repository-scoped self-hosted labels" unless job["runs-on"] == EXPECTED_RUNNER
-      condition = job["if"].to_s
-      required_conditions = [
-        "github.event_name == 'workflow_dispatch'",
-        "github.ref == 'refs/heads/main'",
-        "github.ref_protected == true",
-        "github.repository == 'mikezamayias/homebrew-mighty'",
-        "github.sha != ''",
-      ]
-      errors << "job must be gated before self-hosted execution" unless required_conditions.all? { |item| condition.include?(item) }
+      condition = job["if"].to_s.gsub(/\s+/, "")
+      errors << "job must be gated before self-hosted execution" unless condition == EXPECTED_JOB_CONDITION
       validate_steps(job.fetch("steps", []))
     end
   end
@@ -211,6 +213,47 @@ class ManualWorkflowPolicyTest < Minitest::Test
     policy.validate
 
     assert_includes policy.errors, "secret references are forbidden"
+  end
+
+  def test_job_gate_cannot_be_broadened_with_or
+    policy = ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => {
+          "validate" => {
+            "if" => "github.sha != '' || (#{ManualWorkflowPolicy::EXPECTED_JOB_CONDITION})",
+            "runs-on" => ManualWorkflowPolicy::EXPECTED_RUNNER,
+            "steps" => [],
+          },
+        },
+      },
+    )
+
+    policy.validate
+
+    assert_includes policy.errors, "job must be gated before self-hosted execution"
+  end
+
+  def test_write_capable_publish_commands_are_rejected
+    policy = ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => {
+          "validate" => {
+            "steps" => [
+              { "run" => "gh api --method POST /repos/example/example" },
+              { "run" => "gh api -X POST /repos/example/example" },
+              { "run" => "npm publish" },
+              { "run" => "gem push" },
+            ],
+          },
+        },
+      },
+    )
+
+    policy.validate
+
+    assert_equal 4, policy.errors.count { |error| error.start_with?("forbidden mutating command") }
   end
 
   def test_workflow_directory_contains_only_manual_validation
