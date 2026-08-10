@@ -176,14 +176,21 @@ class ManualWorkflowPolicy
 end
 
 class ManualWorkflowPolicyTest < Minitest::Test
+  def policy_for_job(job)
+    ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => { "validate" => job },
+      },
+    )
+  end
+
   def test_manual_workflow_obeys_security_policy
     assert_empty ManualWorkflowPolicy.new.validate
   end
 
   def test_job_permissions_cannot_grant_write
-    policy = ManualWorkflowPolicy.new(
-      document: { "permissions" => { "contents" => "read" }, "jobs" => { "validate" => { "permissions" => { "contents" => "write" } } } },
-    )
+    policy = policy_for_job("permissions" => { "contents" => "write" })
 
     policy.validate
 
@@ -191,9 +198,7 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_job_write_all_permissions_cannot_grant_write
-    policy = ManualWorkflowPolicy.new(
-      document: { "permissions" => { "contents" => "read" }, "jobs" => { "validate" => { "permissions" => "write-all" } } },
-    )
+    policy = policy_for_job("permissions" => "write-all")
 
     policy.validate
 
@@ -201,12 +206,7 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_secret_related_keys_are_rejected
-    policy = ManualWorkflowPolicy.new(
-      document: {
-        "permissions" => { "contents" => "read" },
-        "jobs" => { "validate" => { "secret" => "legacy", "secrets" => "inherit" } },
-      },
-    )
+    policy = policy_for_job("secret" => "legacy", "secrets" => "inherit")
 
     policy.validate
 
@@ -214,12 +214,7 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_secret_context_values_are_rejected
-    policy = ManualWorkflowPolicy.new(
-      document: {
-        "permissions" => { "contents" => "read" },
-        "jobs" => { "validate" => { "env" => { "serialized" => "${{ toJSON(secrets) }}" } } },
-      },
-    )
+    policy = policy_for_job("env" => { "serialized" => "${{ toJSON(secrets) }}" })
 
     policy.validate
 
@@ -227,17 +222,10 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_job_gate_cannot_be_broadened_with_or
-    policy = ManualWorkflowPolicy.new(
-      document: {
-        "permissions" => { "contents" => "read" },
-        "jobs" => {
-          "validate" => {
-            "if" => "github.sha != '' || (#{ManualWorkflowPolicy::EXPECTED_JOB_CONDITION})",
-            "runs-on" => ManualWorkflowPolicy::EXPECTED_RUNNER,
-            "steps" => [],
-          },
-        },
-      },
+    policy = policy_for_job(
+      "if" => "github.sha != '' || (#{ManualWorkflowPolicy::EXPECTED_JOB_CONDITION})",
+      "runs-on" => ManualWorkflowPolicy::EXPECTED_RUNNER,
+      "steps" => [],
     )
 
     policy.validate
@@ -246,20 +234,13 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_write_capable_publish_commands_are_rejected
-    policy = ManualWorkflowPolicy.new(
-      document: {
-        "permissions" => { "contents" => "read" },
-        "jobs" => {
-          "validate" => {
-            "steps" => [
-              { "run" => "gh api --method POST /repos/example/example" },
-              { "run" => "gh api -X POST /repos/example/example" },
-              { "run" => "npm publish" },
-              { "run" => "gem push" },
-            ],
-          },
-        },
-      },
+    policy = policy_for_job(
+      "steps" => [
+        { "run" => "gh api --method POST /repos/example/example" },
+        { "run" => "gh api -X POST /repos/example/example" },
+        { "run" => "npm publish" },
+        { "run" => "gem push" },
+      ],
     )
 
     policy.validate
@@ -268,19 +249,12 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_only_required_read_only_git_commands_are_allowed
-    policy = ManualWorkflowPolicy.new(
-      document: {
-        "permissions" => { "contents" => "read" },
-        "jobs" => {
-          "validate" => {
-            "steps" => [
-              { "run" => 'test "$(git rev-parse HEAD)" = "$EVENT_SHA"' },
-              { "run" => 'test "$(git branch --show-current)" = ""' },
-              { "run" => 'git ls-files --error-unmatch -- "$cask"' },
-            ],
-          },
-        },
-      },
+    policy = policy_for_job(
+      "steps" => [
+        { "run" => 'test "$(git rev-parse HEAD)" = "$EVENT_SHA"' },
+        { "run" => 'test "$(git branch --show-current)" = ""' },
+        { "run" => 'git ls-files --error-unmatch -- "$cask"' },
+      ],
     )
 
     policy.validate
@@ -289,20 +263,13 @@ class ManualWorkflowPolicyTest < Minitest::Test
   end
 
   def test_git_global_options_and_other_commands_are_rejected
-    policy = ManualWorkflowPolicy.new(
-      document: {
-        "permissions" => { "contents" => "read" },
-        "jobs" => {
-          "validate" => {
-            "steps" => [
-              { "run" => 'git -C "$GITHUB_WORKSPACE" checkout main' },
-              { "run" => 'git --git-dir="$GITHUB_WORKSPACE/.git" reset --hard' },
-              { "run" => "git status --short" },
-              { "run" => "git switch main" },
-            ],
-          },
-        },
-      },
+    policy = policy_for_job(
+      "steps" => [
+        { "run" => 'git -C "$GITHUB_WORKSPACE" checkout main' },
+        { "run" => 'git --git-dir="$GITHUB_WORKSPACE/.git" reset --hard' },
+        { "run" => "git status --short" },
+        { "run" => "git switch main" },
+      ],
     )
 
     policy.validate

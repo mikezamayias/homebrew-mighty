@@ -1,5 +1,7 @@
 # Project agent memory
 
+Last updated: 2026-08-10.
+
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
 - Follow the public manual-only validation policy and Captain dispatch procedure in `README.md`.
