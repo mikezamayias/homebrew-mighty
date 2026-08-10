@@ -26,7 +26,8 @@ class ManualWorkflowPolicy
   FORBIDDEN_COMMANDS = [
     /\bbrew\s+(?:bump|cleanup|create|edit|install|link|reinstall|tap|tap-new|uninstall|unlink|untap|update|upgrade)\b/i,
     /\b(?:gem|bundle)\s+install\b/i,
-    /\bgit\s+(?:commit|push|tag)\b/i,
+    /\bgit\s+(?:am|checkout|cherry-pick|commit|merge|push|rebase|reset|restore|revert|switch|symbolic-ref|tag|update-ref)\b/i,
+    /\bgit\s+branch\s+(?!--show-current\b)/i,
     /\bgh\s+(?:pr\s+create|release|workflow\s+run)\b/i,
     /\bgh\s+api\b[^\n]*(?:(?:--method(?:=|\s+)|-X(?:=|\s*)))(?:POST|PUT|PATCH|DELETE)\b/i,
     /\b(?:gem\s+push|npm\s+publish|yarn\s+publish|pnpm\s+publish)\b/i,
@@ -254,6 +255,29 @@ class ManualWorkflowPolicyTest < Minitest::Test
     policy.validate
 
     assert_equal 4, policy.errors.count { |error| error.start_with?("forbidden mutating command") }
+  end
+
+  def test_ref_changing_git_commands_are_rejected
+    policy = ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => {
+          "validate" => {
+            "steps" => [
+              { "run" => "git checkout main" },
+              { "run" => "git switch main" },
+              { "run" => "git reset --hard" },
+              { "run" => "git restore ." },
+              { "run" => "git update-ref refs/heads/main HEAD" },
+            ],
+          },
+        },
+      },
+    )
+
+    policy.validate
+
+    assert_equal 5, policy.errors.count { |error| error.start_with?("forbidden mutating command") }
   end
 
   def test_workflow_directory_contains_only_manual_validation
