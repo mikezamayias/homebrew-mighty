@@ -14,6 +14,8 @@ class ManualWorkflowPolicy
     pull_request pull_request_target push schedule repository_dispatch workflow_call
   ].freeze
   READ_ONLY_PERMISSION_VALUES = %w[none read].freeze
+  SECRET_KEY_PATTERN = /secret/i
+  SECRET_CONTEXT_PATTERN = /\bsecrets?\b/i
   FORBIDDEN_COMMANDS = [
     /\bbrew\s+(?:bump|cleanup|create|edit|install|link|reinstall|tap|tap-new|uninstall|unlink|untap|update|upgrade)\b/i,
     /\b(?:gem|bundle)\s+install\b/i,
@@ -131,13 +133,19 @@ class ManualWorkflowPolicy
   end
 
   def validate_forbidden_references(node)
-    each_pair(node) do |key, value|
-      errors << "environment references are forbidden" if key.to_s == "environment"
-
-      text = value.is_a?(String) ? value : ""
-      errors << "secret references are forbidden" if text.match?(/(?:secrets\.|\bsecret\b)/i)
-      errors << "hosted runner references are forbidden" if text.match?(/(?:ubuntu|windows|macos)-latest/i)
-      errors << "non-default checkout refs are forbidden" if key.to_s == "ref" && text != "${{ github.sha }}"
+    case node
+    when Hash
+      node.each do |key, value|
+        key_text = key.to_s
+        text = value.is_a?(String) ? value : ""
+        errors << "environment references are forbidden" if key_text == "environment"
+        errors << "secret references are forbidden" if key_text.match?(SECRET_KEY_PATTERN) || text.match?(SECRET_CONTEXT_PATTERN)
+        errors << "hosted runner references are forbidden" if text.match?(/(?:ubuntu|windows|macos)-latest/i)
+        errors << "non-default checkout refs are forbidden" if key_text == "ref" && text != "${{ github.sha }}"
+        validate_forbidden_references(value)
+      end
+    when Array
+      node.each { |value| validate_forbidden_references(value) }
     end
   end
 
@@ -177,6 +185,32 @@ class ManualWorkflowPolicyTest < Minitest::Test
     policy.validate
 
     assert_includes policy.errors, "permissions must be read-only"
+  end
+
+  def test_secret_related_keys_are_rejected
+    policy = ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => { "validate" => { "secret" => "legacy", "secrets" => "inherit" } },
+      },
+    )
+
+    policy.validate
+
+    assert_equal 2, policy.errors.count { |error| error == "secret references are forbidden" }
+  end
+
+  def test_secret_context_values_are_rejected
+    policy = ManualWorkflowPolicy.new(
+      document: {
+        "permissions" => { "contents" => "read" },
+        "jobs" => { "validate" => { "env" => { "serialized" => "${{ toJSON(secrets) }}" } } },
+      },
+    )
+
+    policy.validate
+
+    assert_includes policy.errors, "secret references are forbidden"
   end
 
   def test_workflow_directory_contains_only_manual_validation
