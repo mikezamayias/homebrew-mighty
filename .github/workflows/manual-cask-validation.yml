@@ -1,0 +1,64 @@
+name: Manual cask validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-casks:
+    name: Validate protected default branch casks
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.ref_protected == true &&
+      github.repository == 'mikezamayias/homebrew-mighty' &&
+      github.sha != ''
+    runs-on: [self-hosted, macOS, ARM64, homebrew-mighty-manual]
+    timeout-minutes: 30
+    steps:
+      - name: Assert protected default branch event
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REF_PROTECTED: ${{ github.ref_protected }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$EVENT_NAME" = "workflow_dispatch"
+          test "$EVENT_REF" = "refs/heads/main"
+          test "$EVENT_REF_PROTECTED" = "true"
+          test "$EVENT_REPOSITORY" = "mikezamayias/homebrew-mighty"
+          [[ "$EVENT_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out event SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          clean: true
+
+      - name: Verify checked-out SHA
+        shell: bash
+        env:
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EVENT_SHA"
+          test "$(git branch --show-current)" = ""
+
+      - name: Validate every manifest cask
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r cask; do
+            test -n "$cask"
+            [[ "$cask" =~ ^Casks/[A-Za-z0-9@._+-]+\.rb$ ]]
+            git ls-files --error-unmatch -- "$cask" >/dev/null
+            ruby -c "$cask"
+            brew style "$cask"
+            brew audit --cask --strict "$cask"
+          done < .github/cask-validation-manifest.txt
