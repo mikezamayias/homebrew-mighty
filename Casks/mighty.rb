@@ -4,15 +4,10 @@ cask "mighty" do
 
   url "https://mighty.mikezamayias.com/downloads/mighty-#{version}.dmg"
   name "Mighty"
-  desc "Battery status, DPI, polling rate, and button remapping for supported Logitech mice"
-  homepage "https://mighty.mikezamayias.com"
+  desc "Battery status, DPI, polling rate, and button remapping for Logitech mice"
+  homepage "https://mighty.mikezamayias.com/"
 
-  livecheck do
-    url "https://github.com/mikezamayias/mighty/releases/latest"
-    strategy :page_match do |page|
-      page.scan(%r{/mikezamayias/mighty/releases/tag/mighty-(\d{4}\.\d+\.\d+)}i).map(&:first)
-    end
-  end
+  disable! date: "2026-10-24", because: :discontinued
 
   depends_on macos: :sequoia
 
